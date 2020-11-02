@@ -66,6 +66,8 @@ const FoodDetails: React.FC = () => {
   const [isFavorite, setIsFavorite] = useState(false);
   const [foodQuantity, setFoodQuantity] = useState(1);
 
+  const [favorites, setFavorites] = useState<Food[]>([]);
+
   const navigation = useNavigation();
   const route = useRoute();
 
@@ -74,37 +76,133 @@ const FoodDetails: React.FC = () => {
   useEffect(() => {
     async function loadFood(): Promise<void> {
       // Load a specific food with extras based on routeParams id
+      const { data: responseData } = await api.get(`foods/${routeParams.id}`);
+
+      if (responseData.extras) {
+        const extrasWithQuantities = responseData.extras.map(
+          (extraItem: any) => {
+            return { ...extraItem, quantity: 0 };
+          },
+        );
+        setExtras(extrasWithQuantities);
+
+        setFood({
+          ...responseData,
+          formattedPrice: formatValue(responseData.price),
+          extras: extrasWithQuantities,
+        });
+      } else {
+        setExtras([]);
+        setFood({
+          ...responseData,
+          formattedPrice: formatValue(responseData.price),
+        });
+      }
     }
 
     loadFood();
   }, [routeParams]);
 
+  useEffect(() => {
+    async function loadFavorites(): Promise<void> {
+      const { data: responseDataFavorites } = await api.get('favorites');
+
+      setFavorites(responseDataFavorites || []);
+
+      const favorite = responseDataFavorites.filter(
+        (favItem: any) => favItem.id === food.id,
+      );
+
+      setIsFavorite(favorite.length > 0);
+    }
+
+    loadFavorites();
+  }, [food.id]);
+
   function handleIncrementExtra(id: number): void {
     // Increment extra quantity
+    const extrasWithUpdatedQuantities = extras.map((extraItem: Extra) => {
+      const updatedExtra =
+        extraItem.id === id
+          ? { ...extraItem, quantity: extraItem.quantity + 1 }
+          : extraItem;
+      return updatedExtra;
+    });
+
+    setExtras(extrasWithUpdatedQuantities);
+    setFood({ ...food, extras: extrasWithUpdatedQuantities });
   }
 
   function handleDecrementExtra(id: number): void {
     // Decrement extra quantity
+    const extrasWithUpdatedQuantities = extras.map((extraItem: Extra) => {
+      const updatedExtra =
+        extraItem.id === id && extraItem.quantity > 0
+          ? { ...extraItem, quantity: extraItem.quantity - 1 }
+          : extraItem;
+      return updatedExtra;
+    });
+
+    setExtras(extrasWithUpdatedQuantities);
+    setFood({ ...food, extras: extrasWithUpdatedQuantities });
   }
 
   function handleIncrementFood(): void {
     // Increment food quantity
+    setFoodQuantity(foodQuantity + 1);
   }
 
   function handleDecrementFood(): void {
     // Decrement food quantity
+    foodQuantity > 1 && setFoodQuantity(foodQuantity - 1);
   }
 
-  const toggleFavorite = useCallback(() => {
+  const toggleFavorite = useCallback(async () => {
     // Toggle if food is favorite or not
+    if (isFavorite) {
+      setIsFavorite(false);
+      await api.delete(`favorites/${food.id}`);
+    } else {
+      setIsFavorite(true);
+      await api.post('favorites', food);
+    }
   }, [isFavorite, food]);
 
   const cartTotal = useMemo(() => {
     // Calculate cartTotal
+    let extrasPrice = 0;
+
+    extras.forEach(extraItem => {
+      extrasPrice += extraItem.quantity * extraItem.value;
+    });
+
+    return formatValue((food.price + extrasPrice) * foodQuantity);
   }, [extras, food, foodQuantity]);
+
+  // {
+  //   "id": 1,
+  //   "product_id": 1,
+  //   "name": "Ao molho",
+  //   "description": "Macarrão ao molho branco, fughi e cheiro verde das montanhas.",
+  //   "price": 19.9,
+  //   "category": 1,
+  //   "thumbnail_url": "https://storage.googleapis.com/golden-wind/bootcamp-gostack/desafio-gorestaurant-mobile/ao_molho.png",
+  //   "extras": [
+  //     {
+  //       "id": 4,
+  //       "name": "Bacon",
+  //       "value": 1.5,
+  //       "quantity": 1
+  //     }
+  //   ]
+  // }
 
   async function handleFinishOrder(): Promise<void> {
     // Finish the order and save on the API
+
+    const order = { ...food, product_id: food.id } as any;
+    delete order.id;
+    await api.post('orders', order);
   }
 
   // Calculate the correct icon name
